@@ -98,6 +98,7 @@ def parse_args():
     parser.add_argument("--reasoning_model_path", type=str, default="./checkpoint/Seg-Zero-7B")
     parser.add_argument("--segmentation_model_path", type=str, default="facebook/sam2-hiera-large")
     parser.add_argument("--reasonseg_json", type=str, default="./dataset/reasonseg_test.json")
+    parser.add_argument("--batch_size", type=int, default=20)
     return parser.parse_args()
 
 
@@ -157,7 +158,7 @@ def calculate_giou_batch(output_texts, gt_masks, images, intersection_meter, uni
     acc_iou = acc_iou.cpu().numpy() / len(gt_masks)
     intersection_meter.update(intersection), union_meter.update(union)
     acc_iou_meter.update(acc_iou, n=len(gt_masks))
-    return intersection_meter, union_meter, acc_iou_meter
+    # return intersection_meter, union_meter, acc_iou_meter
 
 
 class SegDataset(Dataset):
@@ -248,7 +249,7 @@ def main():
         "<answer>{Answer}</answer>"
             
     dataset = SegDataset(image_path_list, mask_path_list, text_list)
-    dataloader = DataLoader(dataset, collate_fn=custom_collate_fn, batch_size=2, shuffle=False)
+    dataloader = DataLoader(dataset, collate_fn=custom_collate_fn, batch_size=args.batch_size, shuffle=False)
     for index, batch in tqdm(enumerate(dataloader)):
         image_path_list, mask_path_list, text_list = batch    
         # if index == 20:
@@ -302,7 +303,7 @@ def main():
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
 
-        intersection_meter, union_meter, acc_iou_meter = calculate_giou_batch(
+        calculate_giou_batch(
             output_texts, gt_masks, images, intersection_meter, union_meter, acc_iou_meter, xy_factors
         )
         
