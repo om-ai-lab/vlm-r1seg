@@ -18,7 +18,7 @@ import os
 import re
 import cv2
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '7'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '6'
 checkpoint = "../sam2/checkpoints/sam2.1_hiera_large.pt"
 model_cfg = "../sam2/configs/sam2.1/sam2.1_hiera_l.yaml"
 segmentation_model = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
@@ -78,19 +78,14 @@ def predict_sam2(image, input_box, input_point=None, input_label=None, save_path
             masks, scores, _ = segmentation_model.predict(
                 point_coords=input_point,
                 point_labels=input_label,
-                box=input_box[None, :],
-                multimask_output=False,
+                box=input_box,
             )
         else:
-            # masks, scores, _ = segmentation_model.predict(
-            #     box=input_box[None, :],
-            #     multimask_output=False,
-            # )
             masks, scores, _ = segmentation_model.predict(
                 box=input_box[None, :]
             )
-            sorted_ind = np.argsort(scores)[::-1]
-            masks = masks[sorted_ind]
+        sorted_ind = np.argsort(scores)[::-1]
+        masks = masks[sorted_ind]
     if save_path is not None:
         show_masks(image, masks, scores, point_coords=input_point, input_labels=input_label, box_coords=input_box, save_path=save_path)
     return masks
@@ -98,7 +93,7 @@ def predict_sam2(image, input_box, input_point=None, input_label=None, save_path
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--reasoning_model_path", type=str, default="./checkpoint/Qwen2.5-VL-3B-GRPO-R1SEG")
+    parser.add_argument("--reasoning_model_path", type=str, default="./checkpoint/Seg-Zero-7B")
     parser.add_argument("--segmentation_model_path", type=str, default="facebook/sam2-hiera-large")
     parser.add_argument("--reasonseg_json", type=str, default="./dataset/reasonseg_test.json")
     # parser.add_argument("--text", type=str, default="the unusal object in the image")
@@ -168,12 +163,11 @@ def calculate_giou(model_output, gt_mask, image, intersection_meter, union_meter
         pred_mask = torch.from_numpy(pred_mask).to("cuda")
         gt_mask = torch.from_numpy(gt_mask).int().to("cuda")
         pred_mask = (pred_mask > 0).int()
-        
-        # pred_masks = output_dict["pred_masks"]
-        # masks_list = output_dict["gt_masks"][0].int()
-        # output_list = (pred_masks[0] > 0).int()
-        # assert len(pred_masks) == 1
 
+        if pred_mask.shape != gt_mask.shape:
+            print(pred_mask.shape, gt_mask.shape)
+            gt_mask = gt_mask.transpose(1, 0)
+        
         intersection, union, acc_iou = 0.0, 0.0, 0.0
 
         intersection_i, union_i, _ = intersectionAndUnionGPU(
@@ -196,42 +190,22 @@ def calculate_giou(model_output, gt_mask, image, intersection_meter, union_meter
         iou_class = intersection_meter.sum / (union_meter.sum + 1e-10)
         ciou = iou_class[1]
         giou = acc_iou_meter.avg[1]
-        
         return giou
-
-    model_output = model_output[0]
-
-    current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
-    answer_tag_pattern = r'<answer>(.*?)</answer>'
-    # bbox_pattern = r'\[(\s*-?\d*\.?\d+\s*),\s*(\s*-?\d*\.?\d+\s*),\s*(\s*-?\d*\.?\d+\s*),\s*(\s*-?\d*\.?\d+\s*)\]'
-    bbox_pattern = r'\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)]'
-    # Try symbolic verification first
+    
     reward = 0.0
     try:
-        content_answer_match = re.search(answer_tag_pattern, model_output, re.DOTALL)
-        if content_answer_match:
-            content_answer = content_answer_match.group(1).strip()
-            bbox_match = re.search(bbox_pattern, content_answer)
-            if bbox_match:
-                # bbox = [round(int(bbox_match.group(1)) * x_factor), round(int(bbox_match.group(2)) * y_factor), 
-                        # round(int(bbox_match.group(3)) * x_factor), round(int(bbox_match.group(4)) * y_factor)]
-                bbox = [round(int(bbox_match.group(1))), round(int(bbox_match.group(2))), 
-                        round(int(bbox_match.group(3))), round(int(bbox_match.group(4)))]
-                input_box = np.array(bbox)
-                masks = predict_sam2(image, input_box, None, None)
-                ground_truth_mask = gt_mask // 255
-                reward = calculate_giou_single(masks[0], ground_truth_mask)
-                # reward = calculate_miou_single(masks[0], ground_truth_mask, 2)
+        model_output = model_output[0]        
+        bbox, points, think = extract_bbox_points_think(model_output, x_factor, y_factor)
+        print("Thinking process: ", think)    
+        
+        masks = predict_sam2(image, bbox, points, [1, 1])
+
+        ground_truth_mask = gt_mask // 255
+        reward = calculate_giou_single(masks[0], ground_truth_mask)
+        # reward = calculate_miou_single(masks[0], ground_truth_mask, 2)
     except Exception:
         pass  # Continue to next verification method if this fails
 
-    if os.getenv("DEBUG_MODE") == "true":
-        log_path = os.getenv("LOG_PATH")
-        # local_rank = int(os.getenv("LOCAL_RANK", 0))
-        with open(log_path, "a", encoding='utf-8') as f:
-            f.write(f"------------- {current_time} Accuracy reward: {reward} -------------\n")
-            f.write(f"Content: {model_output}\n")
-            f.write(f"Solution: {gt_mask}\n")
     return reward
 
 
@@ -271,10 +245,10 @@ def main():
     processor = AutoProcessor.from_pretrained(args.reasoning_model_path, padding_side="left")
 
     QUESTION_TEMPLATE = \
-        "Please find '{Question}' with bbox. " \
-        "Compare the difference between objects and find the most closely matched one. " \
-        "Output the thinking process in <think> </think> and final answer in <answer> </answer> tags. " \
-        "Output the one bbox and points of two largest inscribed circles inside the interested object in JSON format. " \
+        "Please find '{Question}' with bbox and points." \
+        "Compare the difference between objects and find the most closely matched one." \
+        "Output the thinking process in <think> </think> and final answer in <answer> </answer> tags." \
+        "Output the one bbox and points of two largest inscribed circles inside the interested object in JSON format." \
         "i.e., <think> thinking process here </think>" \
         "<answer>{Answer}</answer>"
         
@@ -285,20 +259,20 @@ def main():
         image = Image.open(image_path)
         original_width, original_height = image.size
         resize_size = 840
-        x_factor, y_factor = original_width / resize_size, original_height / resize_size
-
+        x_factor, y_factor = original_width/resize_size, original_height/resize_size
+        
         messages = []
         message = [{
             "role": "user",
             "content": [
-                {
-                    "type": "image",
-                    "image": image.resize((resize_size, resize_size), Image.BILINEAR)
+            {
+                    "type": "image", 
+                    "image": image.resize((resize_size, resize_size), Image.BILINEAR) 
                 },
-                {
+                {   
                     "type": "text",
-                    "text": QUESTION_TEMPLATE.format(Question=text.lower().strip("."),
-                                                     Answer="{'bbox': [10,100,200,210]}")
+                    "text": QUESTION_TEMPLATE.format(Question=text.lower().strip("."), 
+                                                        Answer="{'bbox': [10,100,200,210], 'points_1': [30,110], 'points_2': [35,180]}")
                 }
             ]
         }]
@@ -332,21 +306,6 @@ def main():
         print(index, giou)
         giou_list.append(giou)
 
-        # bbox, points, think = extract_bbox_points_think(output_text[0], x_factor, y_factor)
-        #
-        # print("Thinking process: ", think)
-        #
-        # with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-        #     segmentation_model.set_image(image)
-        #     masks, scores, _ = segmentation_model.predict(
-        #         # point_coords=points,
-        #         # point_labels=[1, 1],
-        #         box=bbox
-        #     )
-        #     sorted_ind = np.argsort(scores)[::-1]
-        #     masks = masks[sorted_ind]
-        #
-        # mask = masks[0].astype(bool)
     print(giou_list)
     print(np.array(giou_list).mean())
 

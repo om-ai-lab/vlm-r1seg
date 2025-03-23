@@ -4,7 +4,6 @@ import json
 import PIL.Image as Image
 from tqdm import tqdm
 import os
-from pycocotools.coco import COCO
 import numpy as np
 import cv2
 import glob
@@ -114,18 +113,17 @@ def dump_masks(data_dir, mask_dir):
         if mask.dtype != np.uint8:
             mask = mask.astype(np.uint8)
         cv2.imwrite(mask_path, mask * 255)
-        # loaded_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-
-        if "241852123_1c8229b3e7_o" in name:
-            print()
-        if image.shape[:2] != mask.shape:
-            assert image.shape[2:] != mask.shape[2:]
+        loaded_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        # if "241852123_1c8229b3e7_o" in name:
+        #     print()
+        if image.shape[:2] != loaded_mask.shape:
+            print(name, image.shape, loaded_mask.shape)
 
 
 def main():
-    data_dir = "/home/zilun/Documents/R1-Seg/dataset/reasoningseg/test"
-    mask_dir = "/home/zilun/Documents/R1-Seg/dataset/reasoningseg/mask_img_test"
-    save_json_path = "reasonseg_test.json"
+    data_dir = "./dataset/reasoningseg/test"
+    mask_dir = "./dataset/reasoningseg/mask_img_test"
+    save_json_path = "./dataset/reasonseg_test.json"
     os.makedirs(data_dir, exist_ok=True)
     os.makedirs(mask_dir, exist_ok=True)
     # dump_masks(data_dir, mask_dir)
@@ -141,7 +139,13 @@ def main():
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
         _, sents, is_sentence = get_mask_from_json(json_path, image)
-        sampled_inds = list(range(len(sents)))
+        # sampled_inds = list(range(len(sents)))
+        if len(sents) >= 3:
+            sampled_inds = np.random.choice(
+                list(range(len(sents))), size=3, replace=False
+            )
+        else:
+            sampled_inds = list(range(len(sents)))
         sampled_sents = np.vectorize(sents.__getitem__)(sampled_inds).tolist()
         for sent in sampled_sents:
             r1_data = dict()
