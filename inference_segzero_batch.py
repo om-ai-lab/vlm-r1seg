@@ -20,7 +20,7 @@ import re
 import cv2
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '7'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '7'
 checkpoint = "../sam2/checkpoints/sam2.1_hiera_large.pt"
 model_cfg = "../sam2/configs/sam2.1/sam2.1_hiera_l.yaml"
 segmentation_model = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
@@ -154,9 +154,9 @@ def calculate_giou_batch(output_texts, gt_masks, images, intersection_meter, uni
         except Exception:
             pass  # Continue to next verification method if this fails
     intersection, union = intersection.cpu().numpy(), union.cpu().numpy()
-    acc_iou = acc_iou.cpu().numpy() / gt_masks.shape[0]
+    acc_iou = acc_iou.cpu().numpy() / len(gt_masks)
     intersection_meter.update(intersection), union_meter.update(union)
-    acc_iou_meter.update(acc_iou, n=gt_masks.shape[0])
+    acc_iou_meter.update(acc_iou, n=len(gt_masks))
     return intersection_meter, union_meter, acc_iou_meter
 
 
