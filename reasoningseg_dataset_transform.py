@@ -104,10 +104,6 @@ def dump_masks(data_dir, mask_dir):
             (mask == 1).astype(np.float32) for _ in range(len(sampled_inds))
         ]
         masks = np.stack(sampled_masks, axis=0)
-        # masks = torch.from_numpy(masks)
-        # label = torch.ones(masks.shape[1], masks.shape[2]) * ignore_label
-        # for mask in masks[1:]:
-        #     visualize_mask(image_path, mask)
         mask_path = os.path.join(mask_dir, name + ".jpg")
         mask = masks[0]
         if mask.dtype != np.uint8:
@@ -121,8 +117,8 @@ def dump_masks(data_dir, mask_dir):
 
 
 def main():
-    data_dir = "./dataset/reasoningseg/test"
-    mask_dir = "./dataset/reasoningseg/mask_img_test"
+    data_dir = "/data1/zilun/vlm-r1seg/dataset/reasoningseg/test"
+    mask_dir = "/data1/zilun/vlm-r1seg/dataset/reasoningseg/mask_img_test"
     save_json_path = "./dataset/reasonseg_test.json"
     os.makedirs(data_dir, exist_ok=True)
     os.makedirs(mask_dir, exist_ok=True)
