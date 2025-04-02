@@ -18,6 +18,7 @@ from datetime import datetime
 import os
 import re
 import cv2
+import pytorch_lightning as pl
 
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '7'
@@ -142,6 +143,7 @@ def calculate_giou_batch(output_texts, gt_masks, images, intersection_meter, uni
             print("Thinking process: ", think)    
             pred_mask = predict_sam2(image, bbox, points, [1, 1])[0]
             pred_mask = torch.from_numpy(pred_mask)
+            gt_mask = gt_mask // 255
             gt_mask = torch.from_numpy(gt_mask).int().to("cuda")
             pred_mask = (pred_mask > 0).int().to("cuda")
 
@@ -208,6 +210,7 @@ def custom_collate_fn(batch):
 
 
 def main():
+    pl.seed_everything(2024)
     args = parse_args()
     reasonseg_json = json.load(open(args.reasonseg_json, "r"))
 
@@ -279,7 +282,8 @@ def main():
                 ]
             }]
             messages.append(message)
-            gt_mask = Image.open(mask_path)
+            # gt_mask = Image.open(mask_path)
+            gt_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
             gt_masks.append(gt_mask)
             images.append(image)
         # Preparation for inference
