@@ -114,19 +114,19 @@ def make_vlmr1_json(dataloader, img_dir, mask_dir, save_json_path):
 
 
 def main():
-    dataset_path = "/Users/zilun/Downloads/refCOCOg_2k_840"
+    dataset_path = "/training/zilun/dataset/refCOCOg_9k_840"
     ds = load_dataset(dataset_path, split="train")
-    recocog_json = "/Users/zilun/Desktop/R1-Seg/dataset/refcocog/instances.json"
-    img_dir = "/Users/zilun/Desktop/R1-Seg/dataset/refcocog/img"
-    mask_dir = "/Users/zilun/Desktop/R1-Seg/dataset/refcocog/mask_img"
+    recocog_json = "/training/zilun/dataset/refCOCOg_9k_840/instances.json"
+    img_dir = "/training/zilun/dataset/coco/refcocog"
+    mask_dir = "/training/zilun/dataset/coco/refcocog_mask"
     os.makedirs(img_dir, exist_ok=True)
     os.makedirs(mask_dir, exist_ok=True)
-    # processed_list = dump_img(ds, img_dir)
+    processed_list = dump_img(ds, img_dir)
     dataloader = DataLoader(ds.with_format("torch"), batch_size=1)
-    # recocog_maskgt = json.load(open(recocog_json, "r"))["annotations"]
-    # target_mask_size = (840, 840)
-    # mask_paths = dump_masks(recocog_maskgt, dataloader, target_mask_size, img_dir, mask_dir)
-    save_json_path = "vlmr1_refcocog_2k_840.json"
+    recocog_maskgt = json.load(open(recocog_json, "r"))["annotations"]
+    target_mask_size = (840, 840)
+    mask_paths = dump_masks(recocog_maskgt, dataloader, target_mask_size, img_dir, mask_dir)
+    save_json_path = "vlmr1_refcocog_9k_840.json"
     json_list = make_vlmr1_json(dataloader, img_dir, mask_dir, save_json_path)
 
 

@@ -132,7 +132,15 @@ def extract_bbox_points_think(output_text, x_factor, y_factor):
 
 
 def calculate_giou_batch(output_texts, gt_masks, images, intersection_meter, union_meter, acc_iou_meter, xy_factors):
-    intersection, union, acc_iou = 0.0, 0.0, 0.0
+    def compute_iou(mask1, mask2):
+        intersection = np.logical_and(mask1, mask2).sum()
+        union = np.logical_or(mask1, mask2).sum()
+        if union == 0:
+            return 0
+        giou = intersection / union 
+        return giou
+    
+    giou_list = []
     for i, (gt_mask, output_text) in enumerate(zip(gt_masks, output_texts)):
         x_factor, y_factor = xy_factors[i]
         image = images[i]
@@ -146,19 +154,16 @@ def calculate_giou_batch(output_texts, gt_masks, images, intersection_meter, uni
             gt_mask = torch.from_numpy(gt_mask).int().to("cuda")
             pred_mask = (pred_mask > 0).int().to("cuda")
 
-            intersection_i, union_i, _ = intersectionAndUnionGPU(
-                pred_mask.contiguous().clone(), gt_mask.contiguous(), 2, ignore_index=255
-            )
-            intersection += intersection_i
-            union += union_i
-            acc_iou += intersection_i / (union_i + 1e-5)
-            acc_iou[union_i == 0] += 1.0  # no-object target
+            # intersection_i, union_i, _ = intersectionAndUnionGPU(
+            #     pred_mask.contiguous().clone(), gt_mask.contiguous(), 2, ignore_index=255
+            # )
+            
+            giou = compute_iou(pred_mask.cpu().numpy(), gt_mask.cpu().numpy())
+            giou_list.append(giou)
+            
         except Exception:
             pass  # Continue to next verification method if this fails
-    intersection, union = intersection.cpu().numpy(), union.cpu().numpy()
-    acc_iou = acc_iou.cpu().numpy() / len(gt_masks)
-    intersection_meter.update(intersection), union_meter.update(union)
-    acc_iou_meter.update(acc_iou, n=len(gt_masks))
+    return giou_list
 
 
 class SegDataset(Dataset):
@@ -251,10 +256,11 @@ def main():
             
     dataset = SegDataset(image_path_list, mask_path_list, text_list)
     dataloader = DataLoader(dataset, collate_fn=custom_collate_fn, batch_size=args.batch_size, shuffle=False)
+    giou_all = []
     for index, batch in tqdm(enumerate(dataloader)):
-        image_path_list, mask_path_list, text_list = batch    
-        # if index == 20:
+        # if index == 2:
         #     break
+        image_path_list, mask_path_list, text_list = batch    
         messages = []
         gt_masks = []
         images = []
@@ -305,18 +311,15 @@ def main():
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
 
-        calculate_giou_batch(
+        giou_list = calculate_giou_batch(
             output_texts, gt_masks, images, intersection_meter, union_meter, acc_iou_meter, xy_factors
         )
-        
-    intersection_meter.all_reduce()
-    union_meter.all_reduce()
-    acc_iou_meter.all_reduce()
-
-    iou_class = intersection_meter.sum / (union_meter.sum + 1e-10)
-    ciou = iou_class[1]
-    giou = acc_iou_meter.avg[1]
-    print(ciou, giou)
+        print(len(giou_list), giou_list)
+        giou_all.extend(giou_list)
+    
+    giou = np.array(giou_all).mean()
+    giou = np.round(giou, 4) * 100
+    print("giou: {}".format(giou))
     
 
 if __name__ == "__main__":
