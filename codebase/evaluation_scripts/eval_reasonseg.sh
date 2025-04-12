@@ -1,6 +1,6 @@
 #!/bin/bash
 
-REASONING_MODEL_PATH="/training/zilun/Seg-Zero/workdir/run_qwen2_5_7b_refCOCOg/global_step_350/actor/huggingface"
+REASONING_MODEL_PATH="/training/zilun/Seg-Zero/workdir/run_qwen2_5_7b_refCOCOg/global_step_100/actor/huggingface"
 SEGMENTATION_MODEL_PATH="/training/zilun/model/sam2.1-hiera-large"
 
 
